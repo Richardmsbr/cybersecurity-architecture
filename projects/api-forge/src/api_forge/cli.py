@@ -1,0 +1,311 @@
+"""Command-line interface for API Forge."""
+
+import typer
+from pathlib import Path
+from rich.console import Console
+from rich.panel import Panel
+from typing import Optional
+
+from .config import load_config
+from .engine import ForgeEngine
+
+app = typer.Typer(
+    name="api-forge",
+    help="AI-powered API generation from natural language",
+    no_args_is_help=True,
+)
+console = Console()
+
+
+@app.command()
+def generate(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c",
+        help="Path to YAML configuration file"
+    ),
+    description: Optional[str] = typer.Option(
+        None, "--description", "-d",
+        help="Natural language description of the API"
+    ),
+    framework: str = typer.Option(
+        "fastapi",
+        "--framework", "-f",
+        help="Target framework (fastapi, express, gin)"
+    ),
+    database: str = typer.Option(
+        "postgresql",
+        "--database", "-db",
+        help="Database type (postgresql, mysql, sqlite, mongodb)"
+    ),
+    auth: str = typer.Option(
+        "jwt",
+        "--auth", "-a",
+        help="Authentication type (jwt, oauth2, apikey, none)"
+    ),
+    output: Path = typer.Option(
+        Path("./generated"),
+        "--output", "-o",
+        help="Output directory"
+    ),
+    model: str = typer.Option(
+        "llama3.2",
+        "--model", "-m",
+        help="LLM model to use (llama3.2, mistral, gpt-4)"
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show what would be generated without writing files"
+    ),
+) -> None:
+    """Generate a complete API from configuration or description."""
+
+    console.print(Panel.fit(
+        "[bold blue]API Forge[/bold blue] - AI-powered API Generation",
+        border_style="blue"
+    ))
+
+    # Validate inputs
+    if not config and not description:
+        console.print("[red]Error:[/red] Either --config or --description is required")
+        raise typer.Exit(1)
+
+    # Load configuration
+    if config:
+        if not config.exists():
+            console.print(f"[red]Error:[/red] Config file not found: {config}")
+            raise typer.Exit(1)
+        api_config = load_config(config)
+        console.print(f"[green]Loaded config:[/green] {config}")
+    else:
+        api_config = {
+            "description": description,
+            "settings": {
+                "framework": framework,
+                "database": database,
+                "auth": {"type": auth},
+            }
+        }
+
+    # Initialize engine
+    engine = ForgeEngine(
+        model=model,
+        output_dir=output,
+        dry_run=dry_run,
+    )
+
+    # Generate
+    with console.status("[bold green]Generating API...") as status:
+        try:
+            result = engine.generate(api_config)
+
+            if dry_run:
+                console.print("\n[yellow]Dry run - no files written[/yellow]")
+                console.print("\n[bold]Would generate:[/bold]")
+                for file in result.files:
+                    console.print(f"  - {file}")
+            else:
+                console.print(f"\n[green]Generated {len(result.files)} files[/green]")
+                console.print(f"[green]Output directory:[/green] {output}")
+
+                console.print("\n[bold]Next steps:[/bold]")
+                console.print(f"  cd {output}")
+                console.print("  pip install -r requirements.txt")
+                console.print("  uvicorn src.main:app --reload")
+
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+
+
+@app.command()
+def init(
+    output: Path = typer.Option(
+        Path("./api.yaml"),
+        "--output", "-o",
+        help="Output path for config file"
+    ),
+    interactive: bool = typer.Option(
+        True,
+        "--interactive/--no-interactive", "-i/-n",
+        help="Interactive mode"
+    ),
+) -> None:
+    """Create a new API configuration file."""
+
+    if output.exists():
+        overwrite = typer.confirm(f"{output} already exists. Overwrite?")
+        if not overwrite:
+            raise typer.Exit(0)
+
+    if interactive:
+        console.print("[bold]API Forge Configuration Wizard[/bold]\n")
+
+        name = typer.prompt("API name", default="my-api")
+        description = typer.prompt("Description")
+        framework = typer.prompt(
+            "Framework",
+            default="fastapi",
+            type=typer.Choice(["fastapi", "express", "gin"])
+        )
+        database = typer.prompt(
+            "Database",
+            default="postgresql",
+            type=typer.Choice(["postgresql", "mysql", "sqlite", "mongodb"])
+        )
+        auth = typer.prompt(
+            "Authentication",
+            default="jwt",
+            type=typer.Choice(["jwt", "oauth2", "apikey", "none"])
+        )
+
+        config_content = f"""# API Forge Configuration
+# Generated by: api-forge init
+
+name: {name}
+version: 1.0.0
+
+description: |
+  {description}
+
+# Define your entities here
+entities:
+  # Example:
+  # User:
+  #   fields:
+  #     - name: string, required
+  #     - email: email, required, unique
+  #   relations:
+  #     - has_many: posts
+
+settings:
+  framework: {framework}
+  database: {database}
+  auth:
+    type: {auth}
+  rate_limiting:
+    default: 100/minute
+  pagination:
+    default_size: 20
+    max_size: 100
+
+output:
+  docker: true
+  kubernetes: false
+  ci:
+    provider: github-actions
+"""
+    else:
+        config_content = """# API Forge Configuration
+# Edit this file and run: api-forge generate --config api.yaml
+
+name: my-api
+version: 1.0.0
+
+description: |
+  Describe your API here. Be specific about entities,
+  relationships, and business logic.
+
+entities:
+  User:
+    fields:
+      - name: string, required, min=2, max=50
+      - email: email, required, unique
+      - password: password, required, min=8
+    relations:
+      - has_many: posts
+
+  Post:
+    fields:
+      - title: string, required, max=200
+      - content: text, required
+      - published: boolean, default=false
+    relations:
+      - belongs_to: author (User)
+
+settings:
+  framework: fastapi
+  database: postgresql
+  auth:
+    type: jwt
+    expiry: 24h
+  rate_limiting:
+    default: 100/minute
+  pagination:
+    default_size: 20
+    max_size: 100
+
+output:
+  docker: true
+  kubernetes: false
+  ci:
+    provider: github-actions
+"""
+
+    output.write_text(config_content)
+    console.print(f"[green]Created:[/green] {output}")
+    console.print(f"\nEdit the file and run: [bold]api-forge generate --config {output}[/bold]")
+
+
+@app.command()
+def validate(
+    config: Path = typer.Argument(..., help="Path to YAML configuration file"),
+) -> None:
+    """Validate an API configuration file."""
+
+    if not config.exists():
+        console.print(f"[red]Error:[/red] File not found: {config}")
+        raise typer.Exit(1)
+
+    try:
+        api_config = load_config(config)
+
+        # Validate structure
+        errors = []
+        warnings = []
+
+        if "name" not in api_config:
+            errors.append("Missing required field: name")
+
+        if "entities" not in api_config:
+            warnings.append("No entities defined")
+
+        if "settings" not in api_config:
+            warnings.append("No settings defined, using defaults")
+
+        if errors:
+            console.print("[red]Validation failed:[/red]")
+            for error in errors:
+                console.print(f"  - {error}")
+            raise typer.Exit(1)
+
+        if warnings:
+            console.print("[yellow]Warnings:[/yellow]")
+            for warning in warnings:
+                console.print(f"  - {warning}")
+
+        console.print("[green]Configuration is valid[/green]")
+
+        # Show summary
+        console.print(f"\n[bold]API Summary:[/bold]")
+        console.print(f"  Name: {api_config.get('name', 'unnamed')}")
+        console.print(f"  Entities: {len(api_config.get('entities', {}))}")
+
+        settings = api_config.get("settings", {})
+        console.print(f"  Framework: {settings.get('framework', 'fastapi')}")
+        console.print(f"  Database: {settings.get('database', 'postgresql')}")
+
+    except Exception as e:
+        console.print(f"[red]Error parsing config:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def version() -> None:
+    """Show version information."""
+    from . import __version__
+    console.print(f"API Forge v{__version__}")
+
+
+if __name__ == "__main__":
+    app()
