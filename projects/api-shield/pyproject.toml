@@ -1,0 +1,80 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "api-shield"
+version = "0.1.0"
+description = "Real-time API security with ML-powered threat detection"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "API Shield Contributors" }
+]
+keywords = [
+    "api",
+    "security",
+    "bola",
+    "rate-limiting",
+    "machine-learning",
+    "owasp",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "httpx>=0.26.0",
+    "redis>=5.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "numpy>=1.26.0",
+    "scikit-learn>=1.4.0",
+    "prometheus-client>=0.19.0",
+    "structlog>=24.1.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+nats = ["nats-py>=2.6.0"]
+kafka = ["aiokafka>=0.10.0"]
+
+[project.scripts]
+api-shield = "api_shield.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/api-shield/api-shield"
+Documentation = "https://api-shield.dev/docs"
+Repository = "https://github.com/api-shield/api-shield"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/api_shield"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
